@@ -26,12 +26,24 @@ const int spiCSPin = 10; //50 MISO, 51 MOSI, 52 SCK
 
 const int LIMIT_SOL_INTERRUPT_PIN = 21; //INT 2
 const int LIMIT_SAG_INTERRUPT_PIN = 20; //INT 3
+//LIMIT SWITLER BİR UCU SOL->20, SAG->21 DIGER UCU GND
 
+//ENCODER 360 DERECE = 2048 PULSE
 const int ENCODER_A_INTERRUPT_PIN = 19; //INT 4
 const int ENCODER_B_INTERRUPT_PIN = 18; //INT 5
 //const int ENCODER_Z_PIN = NULL;
 
-//LIMIT SWITLER BİR UCU SOL->20, SAG->21 DIGER UCU GND
+//BTS7960B 20 Amper Motor Sürücü Kartı Bağlantısı
+//VCC : +5 VDC
+//GND : Toprak Bağlantısı
+//L_IS, R_IS : Akım Test Pinleri //Current alarm output
+//L_EN, R_EN : PWM girişleri
+//L_IN, R_IN : Motor yön kontrol pinleri 
+
+const int MOTORDRIVER_LEFT_ENABLE_PIN = 22;
+const int MOTORDRIVER_RIGHT_ENABLE_PIN = 23;
+const int MOTORDRIVER_LEFT_PWM_PIN = 9; //PWM PIN
+const int MOTORDRIVER_RIGHT_PWM_PIN = 10; //PWM PIN
 
 MCP_CAN CAN(spiCSPin);
 
@@ -67,7 +79,7 @@ void EncoderBInterrupt()
 
 void kalibrasyon()
 {
-
+  soldon();
 }
 
 void sag_limit()
@@ -77,30 +89,58 @@ void sag_limit()
 
 void sol_limit()
 {
+  
+}
 
+void sagdon()
+{
+  digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
+  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, LOW);
+  digitalWrite(MOTORDRIVER_LEFT_PWM_PIN, LOW);
+  analogWrite(MOTORDRIVER_RIGHT_PWM_PIN, 25);
+}
+
+void soldon()
+{
+  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
+  digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, LOW);
+  digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
+  analogWrite(MOTORDRIVER_LEFT_PWM_PIN, 25);
 }
 
 void setup()
 {
   Serial.begin(9600);
+
+  //ENCODER SETUP
   pinMode(ENCODER_A_INTERRUPT_PIN, INPUT_PULLUP);
   pinMode(ENCODER_B_INTERRUPT_PIN, INPUT_PULLUP);
 
-  //Setting up interrupt
-  //A rising pulse from encodenren activated EncoderAInterrupt(). AttachInterrupt ENCODER_A_INTERRUPT_PIN.
   attachInterrupt(digitalPinToInterrupt(ENCODER_A_INTERRUPT_PIN), EncoderAInterrupt, RISING);
-
-  //B rising pulse from encodenren activated EncoderBInterrupt(). AttachInterrupt ENCODER_B_INTERRUPT_PIN.
   attachInterrupt(digitalPinToInterrupt(ENCODER_B_INTERRUPT_PIN), EncoderBInterrupt, RISING);
 
+  //LIMIT SWITCH SETUP
   pinMode(LIMIT_SOL_INTERRUPT_PIN, INPUT_PULLUP);
   pinMode(LIMIT_SAG_INTERRUPT_PIN, INPUT_PULLUP);
 
   attachInterrupt(digitalPinToInterrupt(LIMIT_SOL_INTERRUPT_PIN), sol_limit, FALLING);
   attachInterrupt(digitalPinToInterrupt(LIMIT_SAG_INTERRUPT_PIN), sag_limit, FALLING);
 
+  //MOTOR DRIVER SETUP
+  pinMode(MOTORDRIVER_LEFT_ENABLE_PIN,OUTPUT);
+  pinMode(MOTORDRIVER_RIGHT_ENABLE_PIN, OUTPUT);
+  pinMode(MOTORDRIVER_LEFT_PWM_PIN, OUTPUT);
+  pinMode(MOTORDRIVER_RIGHT_PWM_PIN, OUTPUT);
+
+  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, LOW);
+  digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, LOW);
+  digitalWrite(MOTORDRIVER_LEFT_PWM_PIN, LOW);
+  digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
+
+  //SERIAL BEGIN
   Serial.begin(9600);
 
+  //CAN CONNETION BEGIN
   while (CAN_OK != CAN.begin(CAN_500KBPS))
   {
     Serial.println("CAN BUS Init Failed");
@@ -140,9 +180,10 @@ void loop()
     }
     Serial.println();
 
-    //MOTOR KONTROL
+    //GELEN ACIYA GORE MOTOR KONTROL
     if (canId == 250) //Direksiyon Açı bilgisi
     {
+
     }
   }
 }
