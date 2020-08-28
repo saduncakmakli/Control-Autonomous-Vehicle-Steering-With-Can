@@ -26,7 +26,7 @@ const int spiCSPin = 10; //50 MISO, 51 MOSI, 52 SCK
 
 const int LIMIT_SOL_INTERRUPT_PIN = 21; //INT 2
 const int LIMIT_SAG_INTERRUPT_PIN = 20; //INT 3
-//LIMIT SWITLER BİR UCU SOL->20, SAG->21 DIGER UCU GND
+//LIMIT SWITLER BİR UCU SOL->20, SAG->21 DIGER UCU 5V
 
 //ENCODER 360 DERECE = 2048 PULSE
 const int ENCODER_A_INTERRUPT_PIN = 19; //INT 4
@@ -47,7 +47,25 @@ const int MOTORDRIVER_RIGHT_PWM_PIN = 10; //PWM PIN
 
 MCP_CAN CAN(spiCSPin);
 
-volatile long temp, counter = 0; //This variable will increase or decrease depending on the rotation of encoder
+volatile short temp, counter = 0; //This variable will increase or decrease depending on the rotation of encoder
+
+volatile short max_left_to_right = 0; //Kalibrasyon sonrası tam orta nokta bu sayının yarısı olmalı.
+
+enum calibration {left_calibration, right_calibration, running};
+
+volatile calibration calibration_state = left_calibration;
+
+volatile short target = 0;
+
+void EncoderAInterrupt();
+void EncoderBInterrupt();
+void sag_limit();
+void sol_limit();
+void sagdon();
+void soldon();
+void sagdon(int pwm);
+void soldon(int pwm);
+void gucukes();
 
 void EncoderAInterrupt()
 {
@@ -77,35 +95,71 @@ void EncoderBInterrupt()
   }
 }
 
-void kalibrasyon()
-{
-  soldon();
-}
-
 void sag_limit()
 {
-  
+  gucukes();
+  if (calibration_state != left_calibration)
+  {
+    max_left_to_right = counter;
+
+    if (calibration_state == right_calibration) //Sağ kalibrasyonun tamamlanması.
+    {
+      calibration_state = running;
+      target = max_left_to_right/2;
+    }
+  }
+
 }
 
 void sol_limit()
 {
-  
+  gucukes();
+  counter = 0;
+  if (calibration_state == left_calibration) //Sol kalibrasyonun tamamlanması.
+  {
+    calibration_state = right_calibration;
+    sagdon();
+  }
 }
 
 void sagdon()
 {
   digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
-  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, LOW);
+  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_LEFT_PWM_PIN, LOW);
-  analogWrite(MOTORDRIVER_RIGHT_PWM_PIN, 25);
+  analogWrite(MOTORDRIVER_RIGHT_PWM_PIN, 255);
+}
+
+void sagdon(int pwm)
+{
+  digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
+  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
+  digitalWrite(MOTORDRIVER_LEFT_PWM_PIN, LOW);
+  analogWrite(MOTORDRIVER_RIGHT_PWM_PIN, pwm);
 }
 
 void soldon()
 {
   digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
-  digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, LOW);
+  digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
-  analogWrite(MOTORDRIVER_LEFT_PWM_PIN, 25);
+  analogWrite(MOTORDRIVER_LEFT_PWM_PIN, 255);
+}
+
+void soldon(int pwm)
+{
+  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
+  digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
+  digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
+  analogWrite(MOTORDRIVER_LEFT_PWM_PIN, pwm);
+}
+
+void gucukes()
+{
+  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, LOW);
+  digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, LOW);
+  digitalWrite(MOTORDRIVER_LEFT_PWM_PIN, LOW);
+  digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
 }
 
 void setup()
@@ -120,11 +174,11 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(ENCODER_B_INTERRUPT_PIN), EncoderBInterrupt, RISING);
 
   //LIMIT SWITCH SETUP
-  pinMode(LIMIT_SOL_INTERRUPT_PIN, INPUT_PULLUP);
-  pinMode(LIMIT_SAG_INTERRUPT_PIN, INPUT_PULLUP);
+  pinMode(LIMIT_SOL_INTERRUPT_PIN, INPUT);
+  pinMode(LIMIT_SAG_INTERRUPT_PIN, INPUT);
 
-  attachInterrupt(digitalPinToInterrupt(LIMIT_SOL_INTERRUPT_PIN), sol_limit, FALLING);
-  attachInterrupt(digitalPinToInterrupt(LIMIT_SAG_INTERRUPT_PIN), sag_limit, FALLING);
+  attachInterrupt(digitalPinToInterrupt(LIMIT_SOL_INTERRUPT_PIN), sol_limit, LOW);
+  attachInterrupt(digitalPinToInterrupt(LIMIT_SAG_INTERRUPT_PIN), sag_limit, LOW);
 
   //MOTOR DRIVER SETUP
   pinMode(MOTORDRIVER_LEFT_ENABLE_PIN,OUTPUT);
@@ -148,7 +202,7 @@ void setup()
   }
   Serial.println("CAN BUS  Init OK!");
 
-  kalibrasyon();
+  soldon();
 }
 
 void loop()
@@ -183,7 +237,9 @@ void loop()
     //GELEN ACIYA GORE MOTOR KONTROL
     if (canId == 250) //Direksiyon Açı bilgisi
     {
-
+      target = map(buf[1], 0, 255, 0, max_left_to_right);
+      if ()
+      //pıd entegre edilebilir.
     }
   }
 }
