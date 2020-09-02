@@ -67,6 +67,27 @@ void sagdon(int pwm);
 void soldon(int pwm);
 void gucukes();
 
+void PID_Hesapla(float control_in, float control_now, unsigned int positive_PID_value_map_range, unsigned int negative_PID_value_map_range);
+float error=0;
+float last_error=0;
+float P = 0;
+float I = 0;
+float D = 0;
+
+const int multiple_max = 100;
+const double P_max = multiple_max * 10.0;
+const double I_max = multiple_max * 1.0;
+const double D_max = multiple_max * 10.0;
+const double PID_max = multiple_max * 10.0;
+const double KP = 1.0;
+const double KI = 0.0001;
+const double KD = 0.01;
+float PID = 0.0;
+
+long unsigned motor_control_eskizaman_ms = 0; 
+unsigned long simdiki_zaman_ms;
+const short MOTOR_CONTROL_OLCUM_MS = 250.0; //AYARLA!!
+
 void EncoderAInterrupt()
 {
   // ai0 is activated if DigitalPin nr ENCODER_A_INTERRUPT_PIN is going from LOW to HIGH
@@ -162,6 +183,31 @@ void gucukes()
   digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
 }
 
+void PID_Hesapla(float control_in, float control_now, unsigned int positive_PID_value_map_range, unsigned int negative_PID_value_map_range)
+{
+  last_error = error;
+  error = control_in - control_now; //PID ile kontrol edilecek değişken control now
+
+  P = KP*error;//Oransal Kontrol
+  if (P > P_max) P = P_max;
+  else if (P < -P_max) P = -P_max;
+
+  I += KI*error; //Integralsal Kontrol
+  if (I > I_max) I = I_max;
+  else if (I < -I_max) I = -I_max;
+
+  D = KD*(error-last_error); //Diferansiyel Kontrol
+  if (D > D_max) D = D_max;
+  else if (D < -D_max) D = -D_max;
+
+  PID = P+I+D;
+  if (PID > PID_max) PID = PID_max;
+  else if (PID < -PID_max) PID = -PID_max;
+
+  if      (PID > 0) PID = map(PID,    0, PID_max,    0, positive_PID_value_map_range);
+  else if (PID < 0) PID = map(PID,    -PID_max, 0,   -negative_PID_value_map_range, 0);
+}
+
 void setup()
 {
   Serial.begin(9600);
@@ -214,6 +260,18 @@ void loop()
     temp = counter;
   }
 
+  simdiki_zaman_ms = millis();
+  if (simdiki_zaman_ms - motor_control_eskizaman_ms >= MOTOR_CONTROL_OLCUM_MS)
+  {
+
+    PID_Hesapla(target, counter, 255, 255);
+    if      (PID == 0) gucukes(); //Motor Kapa
+    else if (PID < 0) soldon((int)-PID); //Sola dönüş gerekiyor.
+    else if (PID > 0) sagdon((int)PID); //Sağa dönüş gerekiyor.
+
+    motor_control_eskizaman_ms = millis();
+  }
+
   unsigned char len = 0;
   unsigned char buf[8];
 
@@ -237,9 +295,7 @@ void loop()
     //GELEN ACIYA GORE MOTOR KONTROL
     if (canId == 250) //Direksiyon Açı bilgisi
     {
-      target = map(buf[1], 0, 255, 0, max_left_to_right);
-      if ()
-      //pıd entegre edilebilir.
+      target = map(buf[1], 0, 255, 0, max_left_to_right); //0-255 arasında gelen hedef sinyalini genişletir.
     }
   }
 }
