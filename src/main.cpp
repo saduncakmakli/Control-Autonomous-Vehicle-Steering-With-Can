@@ -23,6 +23,7 @@
 //SERIAL DEBUG ICIN 0,1 KULLANILIYOR BU PINLERI KULLANMA!
 
 const int spiCSPin = 10; //50 MISO, 51 MOSI, 52 SCK
+MCP_CAN CAN(spiCSPin);
 
 const int LIMIT_SOL_INTERRUPT_PIN = 21; //INT 2
 const int LIMIT_SAG_INTERRUPT_PIN = 20; //INT 3
@@ -42,10 +43,8 @@ const int ENCODER_B_INTERRUPT_PIN = 18; //INT 5
 
 const int MOTORDRIVER_LEFT_ENABLE_PIN = 22;
 const int MOTORDRIVER_RIGHT_ENABLE_PIN = 23;
-const int MOTORDRIVER_LEFT_PWM_PIN = 9; //PWM PIN
-const int MOTORDRIVER_RIGHT_PWM_PIN = 10; //PWM PIN
-
-MCP_CAN CAN(spiCSPin);
+const int MOTORDRIVER_LEFT_PWM_PIN = 8; //PWM PIN
+const int MOTORDRIVER_RIGHT_PWM_PIN = 7; //PWM PIN
 
 volatile short temp, counter = 0; //This variable will increase or decrease depending on the rotation of encoder
 
@@ -65,7 +64,7 @@ void sagdon();
 void soldon();
 void sagdon(int pwm);
 void soldon(int pwm);
-void gucukes();
+void stop();
 
 void PID_Hesapla(float control_in, float control_now, unsigned int positive_PID_value_map_range, unsigned int negative_PID_value_map_range);
 float error=0;
@@ -118,7 +117,7 @@ void EncoderBInterrupt()
 
 void sag_limit()
 {
-  gucukes();
+  stop();
   if (calibration_state != left_calibration)
   {
     max_left_to_right = counter;
@@ -130,57 +129,87 @@ void sag_limit()
     }
   }
 
+  byte data_byte_0 = 0x2; //225 adresinden sag limit bilgisi
+  byte stmp[1] = {data_byte_0};
+  CAN.sendMsgBuf(0xE1, 0, 1, stmp); //225 Adresinden sag limit bilgisi yazdırılıyor.
 }
 
 void sol_limit()
 {
-  gucukes();
+  stop();
   counter = 0;
   if (calibration_state == left_calibration) //Sol kalibrasyonun tamamlanması.
   {
     calibration_state = right_calibration;
     sagdon();
   }
+
+  byte data_byte_0 = 0x0; //225 adresinden sol limit bilgisi
+  byte stmp[1] = {data_byte_0};
+  CAN.sendMsgBuf(0xE1, 0, 1, stmp); //225 Adresinden sol limit bilgisi yazdırılıyor.
 }
 
 void sagdon()
 {
+  Serial.println("SAG");
   digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_LEFT_PWM_PIN, LOW);
-  analogWrite(MOTORDRIVER_RIGHT_PWM_PIN, 255);
+  analogWrite(MOTORDRIVER_RIGHT_PWM_PIN, 100);
+
+  byte data_byte_0 = 0x1; //225 adresinden swichtler limitde değil bilgisi
+  byte stmp[1] = {data_byte_0};
+  CAN.sendMsgBuf(0xE1, 0, 1, stmp); //225 Adresinden swichtler limitde değil bilgisi yazdırılıyor.
 }
 
 void sagdon(int pwm)
 {
+  Serial.print(pwm);
+  Serial.println("SAG");
   digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_LEFT_PWM_PIN, LOW);
   analogWrite(MOTORDRIVER_RIGHT_PWM_PIN, pwm);
+
+  byte data_byte_0 = 0x1; //225 adresinden swichtler limitde değil bilgisi
+  byte stmp[1] = {data_byte_0};
+  CAN.sendMsgBuf(0xE1, 0, 1, stmp); //225 Adresinden swichtler limitde değil bilgisi yazdırılıyor.
 }
 
 void soldon()
 {
+  Serial.println("SOL");
   digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
-  analogWrite(MOTORDRIVER_LEFT_PWM_PIN, 255);
+  analogWrite(MOTORDRIVER_LEFT_PWM_PIN, 100);
+
+  byte data_byte_0 = 0x1; //225 adresinden swichtler limitde değil bilgisi
+  byte stmp[1] = {data_byte_0};
+  CAN.sendMsgBuf(0xE1, 0, 1, stmp); //225 Adresinden swichtler limitde değil bilgisi yazdırılıyor.
 }
 
 void soldon(int pwm)
 {
+  Serial.print(pwm);
+  Serial.println("SOL");
   digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, HIGH);
   digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
   analogWrite(MOTORDRIVER_LEFT_PWM_PIN, pwm);
+
+  byte data_byte_0 = 0x1; //225 adresinden swichtler limitde değil bilgisi
+  byte stmp[1] = {data_byte_0};
+  CAN.sendMsgBuf(0xE1, 0, 1, stmp); //225 Adresinden swichtler limitde değil bilgisi yazdırılıyor.
 }
 
-void gucukes()
+void stop()
 {
-  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, LOW);
+  Serial.println("STOP");
   digitalWrite(MOTORDRIVER_RIGHT_ENABLE_PIN, LOW);
   digitalWrite(MOTORDRIVER_LEFT_PWM_PIN, LOW);
   digitalWrite(MOTORDRIVER_RIGHT_PWM_PIN, LOW);
+  digitalWrite(MOTORDRIVER_LEFT_ENABLE_PIN, LOW);
 }
 
 void PID_Hesapla(float control_in, float control_now, unsigned int positive_PID_value_map_range, unsigned int negative_PID_value_map_range)
@@ -210,8 +239,6 @@ void PID_Hesapla(float control_in, float control_now, unsigned int positive_PID_
 
 void setup()
 {
-  Serial.begin(9600);
-
   //ENCODER SETUP
   pinMode(ENCODER_A_INTERRUPT_PIN, INPUT_PULLUP);
   pinMode(ENCODER_B_INTERRUPT_PIN, INPUT_PULLUP);
@@ -220,11 +247,11 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(ENCODER_B_INTERRUPT_PIN), EncoderBInterrupt, RISING);
 
   //LIMIT SWITCH SETUP
-  pinMode(LIMIT_SOL_INTERRUPT_PIN, INPUT);
-  pinMode(LIMIT_SAG_INTERRUPT_PIN, INPUT);
+  pinMode(LIMIT_SOL_INTERRUPT_PIN, INPUT_PULLUP);
+  pinMode(LIMIT_SAG_INTERRUPT_PIN, INPUT_PULLUP);
 
-  attachInterrupt(digitalPinToInterrupt(LIMIT_SOL_INTERRUPT_PIN), sol_limit, LOW);
-  attachInterrupt(digitalPinToInterrupt(LIMIT_SAG_INTERRUPT_PIN), sag_limit, LOW);
+  attachInterrupt(digitalPinToInterrupt(LIMIT_SOL_INTERRUPT_PIN), sol_limit, FALLING);
+  attachInterrupt(digitalPinToInterrupt(LIMIT_SAG_INTERRUPT_PIN), sag_limit, FALLING);
 
   //MOTOR DRIVER SETUP
   pinMode(MOTORDRIVER_LEFT_ENABLE_PIN,OUTPUT);
@@ -240,13 +267,13 @@ void setup()
   //SERIAL BEGIN
   Serial.begin(9600);
 
-  //CAN CONNETION BEGIN
-  while (CAN_OK != CAN.begin(CAN_500KBPS))
-  {
-    Serial.println("CAN BUS Init Failed");
-    delay(100);
-  }
-  Serial.println("CAN BUS  Init OK!");
+  // //CAN CONNETION BEGIN
+  // while (CAN_OK != CAN.begin(CAN_500KBPS))
+  // {
+  //   Serial.println("CAN BUS Init Failed");
+  //   delay(100);
+  // }
+  // Serial.println("CAN BUS  Init OK!");
 
   soldon();
 }
@@ -263,12 +290,22 @@ void loop()
   simdiki_zaman_ms = millis();
   if (simdiki_zaman_ms - motor_control_eskizaman_ms >= MOTOR_CONTROL_OLCUM_MS)
   {
-
-    PID_Hesapla(target, counter, 255, 255);
-    if      (PID == 0) gucukes(); //Motor Kapa
-    else if (PID < 0) soldon((int)-PID); //Sola dönüş gerekiyor.
-    else if (PID > 0) sagdon((int)PID); //Sağa dönüş gerekiyor.
-
+    if (calibration_state == calibration::left_calibration || calibration_state == calibration::right_calibration)
+    {
+      byte data_byte_0 = 0x0; //210 adresinden direksiyonun kalibre edildiği bilgisi //Basılan veri önemsiz adresin 210 olması önemli
+      byte stmp[1] = {data_byte_0};
+      CAN.sendMsgBuf(0xD2, 0, 1, stmp); //210 Adresinden direksiyonun kalibre edildiği bilgisi yazdırılıyor.
+    }
+    else if (calibration_state == calibration::running)
+    {
+      PID_Hesapla(target, counter, 255, 255);
+      if (PID == 0)
+        stop(); //Motor Kapa
+      else if (PID < 0)
+        soldon((int)-PID); //Sola dönüş gerekiyor.
+      else if (PID > 0)
+        sagdon((int)PID); //Sağa dönüş gerekiyor.
+    }
     motor_control_eskizaman_ms = millis();
   }
 
